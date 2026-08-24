@@ -144,7 +144,7 @@ impl Cpu {
             opcode if opcode & 0xF000 == 0x2000 => {
                 // 2nnn - CALL addr
                 // Call subroutine at nnn
-                self.stack[self.sp as usize] = self.pc;
+                self.stack[self.sp as usize] = self.pc + 2;
                 self.sp += 1;
                 self.pc = opcode & 0x0FFF;
                 return Some(self.pc);
@@ -205,38 +205,29 @@ impl Cpu {
                     0x0004 => {
                         // 8xy4 - ADD Vx, Vy
                         // Set Vx = Vx + Vy, set VF = carry
-                        if self.v[x] as u16 + self.v[y] as u16 > 0b1111_1111 {
-                            self.v[0xF] = 1;
-                        } else {
-                            self.v[0xF] = 0;
-                        }
-                        self.v[x] = self.v[x].wrapping_add(self.v[y]);
+                        let (result, carry) = self.v[x].overflowing_add(self.v[y]);
+                        self.v[x] = result;
+                        self.v[0xF] = if carry { 1 } else { 0 };
                     }
                     0x0005 => {
                         // 8xy5 - SUB Vx, Vy
                         // Set Vx = Vx - Vy, set VF = NOT borrow
-                        if self.v[x] > self.v[y] {
-                            self.v[0xF] = 1;
-                        } else {
-                            self.v[0xF] = 0;
-                        }
-                        self.v[x] = self.v[x].wrapping_sub(self.v[y]);
+                        let (result, borrow) = self.v[x].overflowing_sub(self.v[y]);
+                        self.v[x] = result;
+                        self.v[0xF] = if borrow { 0 } else { 1 };
                     }
                     0x0006 => {
                         // 8xy6 - SHR Vx {, Vy}
                         // Set Vx = Vx SHR 1
-                        self.v[0xF] = self.v[x] & 0b0000_0001; // Store least significant bit
+                        self.v[0xF] = self.v[x] & 1; // Store least significant bit
                         self.v[x] >>= 1;
                     }
                     0x0007 => {
                         // 8xy7 - SUBN Vx, Vy
                         // Set Vx = Vy - Vx, set VF = NOT borrow
-                        if self.v[y] > self.v[x] {
-                            self.v[0xF] = 1;
-                        } else {
-                            self.v[0xF] = 0;
-                        }
-                        self.v[x] = self.v[y].wrapping_sub(self.v[x]);
+                        let (result, borrow) = self.v[y].overflowing_sub(self.v[x]);
+                        self.v[x] = result;
+                        self.v[0xF] = if borrow { 0 } else { 1 };
                     }
                     0x000E => {
                         // 8xyE - SHL Vx {, Vy}
@@ -264,7 +255,7 @@ impl Cpu {
             opcode if opcode & 0xF000 == 0xB000 => {
                 // Bnnn - JP V0, addr
                 // Jump to location nnn + V0
-                self.pc = (opcode & 0x0FFF).wrapping_add(self.v[0] as u16);
+                self.pc = (opcode & 0x0FFF) + self.v[0] as u16;
                 return Some(self.pc);
             }
             opcode if opcode & 0xF000 == 0xC000 => {
@@ -285,7 +276,7 @@ impl Cpu {
                     let byte = self.memory[self.index as usize + sprite_row as usize];
                     for sprite_col in 0..8 {
                         let x = (start_col + sprite_col) % DISPLAY_WIDTH;
-                        let pixel = (byte >> (7 - sprite_col)) == 1;
+                        let pixel = ((byte >> (7 - sprite_col)) & 1) == 1;
                         let buffer_index = y * DISPLAY_WIDTH + x;
                         if pixel && self.display_buffer[buffer_index] {
                             self.v[0xF] = 1; // Collision detected
@@ -328,7 +319,8 @@ impl Cpu {
                         // Fx0A - LD Vx, K
                         // Wait for a key press, store the value of the key in Vx
                         // TODO: Implement
-                        println!("WARNING: INSTRUCTION NOT IMPLEMENTED!")
+                        println!("WARNING: INSTRUCTION NOT IMPLEMENTED!");
+                        return Some(self.pc);
                     }
                     0x0015 => {
                         // Fx15 - LD DT, Vx
