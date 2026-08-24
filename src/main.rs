@@ -1,28 +1,49 @@
+use minifb::{Key, Window, WindowOptions};
 use rodio::{DeviceSinkBuilder, Player};
-use std::{env, thread, time};
+use std::{env};
 
 mod cpu;
+mod display;
 
 fn main() {
-    // Test sound functionality
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        eprintln!("Usage: {} <path_to_rom>", args[0]);
+        return;
+    }
+
     let audio_stream =
         DeviceSinkBuilder::open_default_sink().expect("Failed to open default audio sink");
     let audio_player = Player::connect_new(audio_stream.mixer());
 
     let mut chip8 = cpu::Cpu::new(audio_player);
 
-    // let args: Vec<String> = env::args().collect();
-    // if args.len() < 2 {
-    //     eprintln!("Usage: {} <path_to_rom>", args[0]);
-    //     return;
-    // }
-    // chip8.load_rom(&args[1]);
+    chip8.load_rom(&args[1]);
 
-    chip8.sound_timer = 180;
-    while !chip8.exit {
-        println!("Sound Timer: {}", chip8.sound_timer);
+    let mut window = Window::new(
+        "Chip8",
+        cpu::DISPLAY_WIDTH * display::SCALE,
+        cpu::DISPLAY_HEIGHT * display::SCALE,
+        WindowOptions::default(),
+    ).unwrap();
 
-        chip8.cycle();
-        thread::sleep(time::Duration::from_millis(16));
+    let mut framebuffer = vec![0u32; cpu::DISPLAY_WIDTH * display::SCALE * cpu::DISPLAY_HEIGHT * display::SCALE];
+
+    while window.is_open() && !window.is_key_down(Key::Escape) {
+        for _ in 0..10 { // Run multiple cycles per frame for speed -> 60Hz * 10 = 600Hz
+            chip8.cycle();
+        }
+
+        chip8.decrement_timers();
+
+        if chip8.should_draw {
+            display::draw(&chip8.display_buffer, &mut framebuffer);
+            window.update_with_buffer(&framebuffer, cpu::DISPLAY_WIDTH * display::SCALE, cpu::DISPLAY_HEIGHT * display::SCALE).unwrap();
+            chip8.should_draw = false;
+        } else {
+            window.update(); // Poll events
+        }
+
+        display::update_keys(&window, &mut chip8.key_inputs);
     }
 }

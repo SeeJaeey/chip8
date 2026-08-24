@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 rand = "0.10.2"
 rodio = "0.22.2"
+minifb = "0.28.0"

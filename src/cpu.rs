@@ -1,5 +1,8 @@
 use rodio::{Player, Source};
 
+pub const DISPLAY_WIDTH: usize = 64;
+pub const DISPLAY_HEIGHT: usize = 32;
+
 pub struct Cpu {
     // CPU registers
     pub v: [u8; 16],
@@ -18,7 +21,6 @@ pub struct Cpu {
     pub display_buffer: [bool; 64 * 32], // Display buffer for a 64x32 monochrome display
     pub opcode: u16,
     pub audio_player: Player, // Audio player for sound output
-    pub exit: bool, // Flag to indicate when to exit the main loop
     pub should_draw: bool, // Flag to indicate when the display needs to be redrawn
 }
 
@@ -37,10 +39,9 @@ impl Cpu {
             display_buffer: [false; 64 * 32],
             opcode: 0,
             audio_player,
-            exit: false,
             should_draw: false,
         };
-        //cpu.load_font(); // TODO: enable later
+        cpu.load_font();
         cpu
     }
 
@@ -85,32 +86,34 @@ impl Cpu {
         self.opcode = (high << 8) | low;
 
         // Process instruction
-        self.process_opcode();
+        if let None = self.process_opcode() {
+            self.pc += 2;
+        }
+    }
 
-        self.pc += 2;
-
-        // Decrement timers
+    pub fn decrement_timers(&mut self) {
         if self.delay_timer > 0 {
             self.delay_timer -= 1;
         }
         if self.sound_timer > 0 {
+            if self.audio_player.empty() {
+                let beep = rodio::source::SineWave::new(440.0).amplify(0.2);
+                self.audio_player.append(beep);
+            }
             self.sound_timer -= 1;
-            if self.sound_timer != 0 {
-                if self.audio_player.empty() {
-                    let beep = rodio::source::SineWave::new(440.0).amplify(0.2);
-                    self.audio_player.append(beep);
-                }
-            } else {
+            if self.sound_timer == 0 {
                 self.audio_player.stop();
             }
         }
     }
 
-    pub fn process_opcode(&mut self) {
+    pub fn process_opcode(&mut self) -> Option<u16> {
         // Documentation: http://devernay.free.fr/hacks/chip8/C8TECH10.HTM#00E0
-        let x = (self.opcode & 0x0F00 >> 8) as usize;
-        let y = (self.opcode & 0x00F0 >> 4) as usize;
+        let x = ((self.opcode & 0x0F00) >> 8) as usize;
+        let y = ((self.opcode & 0x00F0) >> 4) as usize;
         let kk = (self.opcode & 0x00FF) as u8;
+
+        println!("Processing opcode: {:04X}", self.opcode);
 
         match self.opcode {
             0x00E0 => {
@@ -124,16 +127,19 @@ impl Cpu {
                 // Return from a subroutine
                 self.sp -= 1;
                 self.pc = self.stack[self.sp as usize];
+                return Some(self.pc);
             }
             opcode if opcode & 0xF000 == 0x0000 => {
                 // 0nnn - SYS addr
                 // Jump to a machine code routine at nnn
                 self.pc = opcode & 0x0FFF;
+                return Some(self.pc);
             }
             opcode if opcode & 0xF000 == 0x1000 => {
                 // 1nnn - JP addr
                 // Jump to location at nnn
                 self.pc = opcode & 0x0FFF;
+                return Some(self.pc);
             }
             opcode if opcode & 0xF000 == 0x2000 => {
                 // 2nnn - CALL addr
@@ -141,6 +147,7 @@ impl Cpu {
                 self.stack[self.sp as usize] = self.pc;
                 self.sp += 1;
                 self.pc = opcode & 0x0FFF;
+                return Some(self.pc);
             }
             opcode if opcode & 0xF000 == 0x3000 => {
                 // 3xkk - SE Vx, byte
@@ -171,7 +178,7 @@ impl Cpu {
             opcode if opcode & 0xF000 == 0x7000 => {
                 // 7xkk - ADD Vx, byte
                 // Set Vx = Vx + kk
-                self.v[x] += kk;
+                self.v[x] = self.v[x].wrapping_add(kk);
             }
             opcode if opcode & 0xF000 == 0x8000 => {
                 match opcode & 0x000F {
@@ -234,7 +241,7 @@ impl Cpu {
                     0x000E => {
                         // 8xyE - SHL Vx {, Vy}
                         // Set Vx = Vx SHL 1
-                        self.v[0xF] = self.v[x] & 0b1000_0000; // Store most significant bit
+                        self.v[0xF] = (self.v[x] & 0b1000_0000) >> 7; // Store most significant bit
                         self.v[x] <<= 1;
                     }
                     _ => {
@@ -257,7 +264,8 @@ impl Cpu {
             opcode if opcode & 0xF000 == 0xB000 => {
                 // Bnnn - JP V0, addr
                 // Jump to location nnn + V0
-                self.pc = opcode & 0x0FFF + self.v[0] as u16; // TODO: overflow possible?
+                self.pc = (opcode & 0x0FFF).wrapping_add(self.v[0] as u16);
+                return Some(self.pc);
             }
             opcode if opcode & 0xF000 == 0xC000 => {
                 // Cxkk - RND Vx, byte
@@ -267,8 +275,25 @@ impl Cpu {
             opcode if opcode & 0xF000 == 0xD000 => {
                 // Dxyn - DRW Vx, Vy, nibble
                 // Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision
-                // TODO: Implement
+                let sprite_height = (opcode & 0x000F) as u8;
+                let start_col = self.v[x] as usize;
+                let start_row = self.v[y] as usize;
+                self.v[0xF] = 0; // Reset collision flag
                 
+                for sprite_row in 0..sprite_height {
+                    let y = (start_row + sprite_row as usize) % DISPLAY_HEIGHT;
+                    let byte = self.memory[self.index as usize + sprite_row as usize];
+                    for sprite_col in 0..8 {
+                        let x = (start_col + sprite_col) % DISPLAY_WIDTH;
+                        let pixel = (byte >> (7 - sprite_col)) == 1;
+                        let buffer_index = y * DISPLAY_WIDTH + x;
+                        if pixel && self.display_buffer[buffer_index] {
+                            self.v[0xF] = 1; // Collision detected
+                        }
+                        self.display_buffer[buffer_index] ^= pixel;
+                    }
+                }
+
                 self.should_draw = true;
             }
             opcode if opcode & 0xF000 == 0xE000 => {
@@ -303,6 +328,7 @@ impl Cpu {
                         // Fx0A - LD Vx, K
                         // Wait for a key press, store the value of the key in Vx
                         // TODO: Implement
+                        println!("WARNING: INSTRUCTION NOT IMPLEMENTED!")
                     }
                     0x0015 => {
                         // Fx15 - LD DT, Vx
@@ -317,12 +343,12 @@ impl Cpu {
                     0x001E => {
                         // Fx1E - ADD I, Vx
                         // Set I = I + Vx
-                        self.index += self.v[x] as u16; // TODO: overflow possible?
+                        self.index = self.index.wrapping_add(self.v[x] as u16);
                     }
                     0x0029 => {
                         // Fx29 - LD F, Vx
                         // Set I = location of sprite for digit Vx
-                        self.index = (self.v[x] as u16 * 5) & 0xFFF;
+                        self.index = self.v[x] as u16 * 5;
                     }
                     0x0033 => {
                         // Fx33 - LD B, Vx
@@ -354,5 +380,6 @@ impl Cpu {
                 println!("Unknown opcode: {:04X}", self.opcode);
             }
         }
+        None
     }
 }
