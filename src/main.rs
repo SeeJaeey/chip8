@@ -29,6 +29,7 @@ fn main() {
         WindowOptions::default(),
     )
     .unwrap();
+    window.set_target_fps(60);
 
     let mut framebuffer =
         vec![0u32; display::WIDTH * display::SCALE * display::HEIGHT * display::SCALE];

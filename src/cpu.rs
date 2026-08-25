@@ -13,14 +13,14 @@ pub struct Cpu {
     pub pc: u16,
 
     // Memory
-    pub memory: [u8; 4096], // 4KB of RAM (0x000
+    pub memory: [u8; 4096], // 4KB of RAM
     pub stack: [u16; 16],   // Chip-8 allows for up to 16 levels of nested subroutines
 
     // Other CPU state variables
-    pub key_inputs: [bool; 16], // Array to hold the state of key inputs (16 keys)
+    pub key_inputs: [bool; 16],
     pub display_buffer: [bool; 64 * 32], // Display buffer for a 64x32 monochrome display
-    pub audio_player: Player,   // Audio player for sound output
-    pub should_draw: bool,      // Flag to indicate when the display needs to be redrawn
+    pub audio_player: Player,            // Audio player for sound output
+    pub should_draw: bool,
 }
 
 impl Cpu {
