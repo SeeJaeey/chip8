@@ -73,11 +73,13 @@ This repository contains some example ROMs under /roms. Public-domain CHIP-8 ROM
 .
 ├── roms/             # Collection of different roms
 ├── src/
+│   ├── chip8.rs      # Overall chip functionality with all components
 │   ├── cpu.rs        # CPU state
 │   ├── decode.rs
 │   ├── display.rs    # Framebuffer rendering & key mapping
 │   ├── execute.rs
-│   └── main.rs       # Entry point: window setup, main loop
+│   ├── main.rs       # Entry point: window setup, main loop
+│   └── memory.rs
 └── Cargo.toml
 ```
 
