@@ -1,9 +1,11 @@
 use minifb::{Key, Window, WindowOptions};
 use rodio::{DeviceSinkBuilder, Player};
-use std::{env};
+use std::env;
 
 mod cpu;
+mod decode;
 mod display;
+mod execute;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -22,15 +24,18 @@ fn main() {
 
     let mut window = Window::new(
         "Chip8",
-        cpu::DISPLAY_WIDTH * display::SCALE,
-        cpu::DISPLAY_HEIGHT * display::SCALE,
+        display::WIDTH * display::SCALE,
+        display::HEIGHT * display::SCALE,
         WindowOptions::default(),
-    ).unwrap();
+    )
+    .unwrap();
 
-    let mut framebuffer = vec![0u32; cpu::DISPLAY_WIDTH * display::SCALE * cpu::DISPLAY_HEIGHT * display::SCALE];
+    let mut framebuffer =
+        vec![0u32; display::WIDTH * display::SCALE * display::HEIGHT * display::SCALE];
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        for _ in 0..10 { // Run multiple cycles per frame for speed -> 60Hz * 10 = 600Hz
+        for _ in 0..10 {
+            // Run multiple cycles per frame for speed -> 60Hz * 10 = 600Hz
             chip8.cycle();
         }
 
@@ -38,7 +43,13 @@ fn main() {
 
         if chip8.should_draw {
             display::draw(&chip8.display_buffer, &mut framebuffer);
-            window.update_with_buffer(&framebuffer, cpu::DISPLAY_WIDTH * display::SCALE, cpu::DISPLAY_HEIGHT * display::SCALE).unwrap();
+            window
+                .update_with_buffer(
+                    &framebuffer,
+                    display::WIDTH * display::SCALE,
+                    display::HEIGHT * display::SCALE,
+                )
+                .unwrap();
             chip8.should_draw = false;
         } else {
             window.update(); // Poll events
