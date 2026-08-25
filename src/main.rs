@@ -2,10 +2,12 @@ use minifb::{Key, Window, WindowOptions};
 use rodio::{DeviceSinkBuilder, Player};
 use std::env;
 
+mod chip8;
 mod cpu;
 mod decode;
 mod display;
 mod execute;
+mod memory;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -18,9 +20,9 @@ fn main() {
         DeviceSinkBuilder::open_default_sink().expect("Failed to open default audio sink");
     let audio_player = Player::connect_new(audio_stream.mixer());
 
-    let mut chip8 = cpu::Cpu::new(audio_player);
+    let mut chip8 = chip8::Chip8::new(audio_player);
 
-    chip8.load_rom(&args[1]);
+    chip8.memory.load_rom(&args[1]);
 
     let mut window = Window::new(
         "Chip8",
